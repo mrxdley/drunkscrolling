@@ -1,288 +1,312 @@
-let blurApplied = false;
-let heartbeatInterval = null;
-let config = null;
-let blurIntensity = '5px';
+class FocusBlockerContent {
+  constructor() {
+    this.blurApplied = false;
+    this.heartbeatInterval = null;
+    this.config = null;
+    this.blurIntensity = '5px';
+    
+    this.blurChance = 0.9;
+    this.blurMin = 4;
+    this.blurMax = 10;
+    this.blurCheckInterval = 100;
+    
+    this.lastBlurCheck = 0;
+    this.currentBlurLevel = 0;
+    this.targetBlurLevel = 0;
+    this.blurAnimationId = null;
 
-console.log('[Focus Blocker] Content script loaded');
-
-// Update loadConfig to read new settings
-async function loadConfig() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
-    if (response && response.config) {
-      config = response.config;
-      blurIntensity = config.blurIntensity || '5px';
-      
-      // Read new blur effect settings
-      blurChance = config.blurChance !== undefined ? config.blurChance : 0.9;
-      blurMin = config.blurMin !== undefined ? config.blurMin : 4;
-      blurMax = config.blurMax !== undefined ? config.blurMax : 10;
-      blurCheckInterval = config.blurCheckInterval || 100;
-      
-      console.log('[Focus Blocker] Blur effect config loaded:', {
-        chance: blurChance,
-        min: blurMin,
-        max: blurMax,
-        checkInterval: blurCheckInterval
-      });
-    }
-  } catch (error) {
-    console.error('[Focus Blocker] Failed to load config:', error);
-  }
-}
-// Connect to background script
-const port = chrome.runtime.connect({ name: 'content-script' });
-console.log('[Focus Blocker] Connected to background script');
-
-// Report initial blur state
-chrome.runtime.sendMessage({ 
-  action: 'reportBlurState', 
-  isBlurred: false 
-});
-
-let lastBlurCheck = 0;
-let currentBlurLevel = 0;
-let targetBlurLevel = 0;
-let blurAnimationId = null;
-let blurChance = 0.9; // 90% default
-let blurMin = 4;
-let blurMax = 10;
-let blurCheckInterval = 100;
-
-// Function to get random blur intensity
-function getRandomBlurIntensity() {
-  return Math.random() * (blurMax - blurMin) + blurMin + 'px';
-}
-
-// Function to smoothly animate blur
-function animateBlur() {
-  if (currentBlurLevel === targetBlurLevel) {
-    if (blurAnimationId) {
-      cancelAnimationFrame(blurAnimationId);
-      blurAnimationId = null;
-    }
-    return;
-  }
-
-  // Smooth interpolation (easing)
-  const diff = targetBlurLevel - currentBlurLevel;
-  currentBlurLevel += diff * 0.1; // 10% per frame for smooth transition
-  
-  // Apply the current blur level
-  const intensity = currentBlurLevel + 'px';
-  document.body.style.filter = `blur(${intensity})`;
-  document.body.style.webkitFilter = `blur(${intensity})`;
-  
-  // Also blur any iframes and videos
-  document.querySelectorAll('iframe, video').forEach(el => {
-    el.style.filter = `blur(${intensity})`;
-    el.style.webkitFilter = `blur(${intensity})`;
-  });
-  
-  // Continue animation
-  blurAnimationId = requestAnimationFrame(animateBlur);
-}
-
-// Updated applyBlurForce function with random chance and smooth animation
-function applyBlurForce() {
-  const now = Date.now();
-  
-  // Throttle blur checks
-  if (now - lastBlurCheck < blurCheckInterval) {
-    return;
-  }
-  lastBlurCheck = now;
-  
-  // Random chance check
-  if (Math.random() > blurChance) {
-    console.log(`[Focus Blocker] Random skip - no blur this time`);
-    return;
+    this.currentSiteKey = null;
+    
+    this.initialize();
   }
   
-  // Only start new animation if we're not already at target or animating
-  const newTargetBlur = parseFloat(getRandomBlurIntensity());
-  if (targetBlurLevel !== newTargetBlur || !blurAnimationId) {
-    targetBlurLevel = newTargetBlur;
+  async initialize() {
+    console.log('[Focus Blocker] Content script loaded');
     
-    // Start animation if not already running
-    if (!blurAnimationId) {
-      blurAnimationId = requestAnimationFrame(animateBlur);
-    }
-    
-    blurApplied = true;
-    console.log(`[Focus Blocker] Blur animating to ${targetBlurLevel}px`);
-    
-    // Report blur state to background
-    chrome.runtime.sendMessage({ 
-      action: 'reportBlurState', 
-      isBlurred: true 
-    });
+    await this.loadConfig();
+    this.connectToBackground();
+    this.setupEventListeners();
+    this.setupMutationObserver();
+    this.startContentHeartbeat();
   }
-}
-
-// Updated removeBlur function with smooth fade-out
-function removeBlur() {
-  if (blurApplied) {
-    targetBlurLevel = 0;
-    
-    // Start fade-out animation if not already running
-    if (!blurAnimationId) {
-      blurAnimationId = requestAnimationFrame(animateBlur);
-    }
-    
-    // Mark as not applied when animation completes
-    setTimeout(() => {
-      if (targetBlurLevel === 0 && Math.abs(currentBlurLevel) < 0.1) {
-        blurApplied = false;
-        console.log('[Focus Blocker] Blur fully removed');
+  
+  async loadConfig() {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'getConfig' });
+      if (response?.config) {
+        this.config = response.config;
+        this.blurIntensity = this.config.blurIntensity || '5px';
         
-        // Report blur state to background
-        chrome.runtime.sendMessage({ 
-          action: 'reportBlurState', 
-          isBlurred: false 
+        this.blurChance = this.config.blurChance ?? 0.9;
+        this.blurMin = this.config.blurMin ?? 4;
+        this.blurMax = this.config.blurMax ?? 10;
+        this.blurCheckInterval = this.config.blurCheckInterval || 100;
+        
+        console.log('[Focus Blocker] Blur effect config loaded:', {
+          chance: this.blurChance,
+          min: this.blurMin,
+          max: this.blurMax,
+          checkInterval: this.blurCheckInterval
         });
       }
-    }, 300); // Check after animation time
+    } catch (error) {
+      console.error('[Focus Blocker] Failed to load config:', error);
+    }
+  }
+  
+  connectToBackground() {
+    this.port = chrome.runtime.connect({ name: 'content-script' });
+    console.log('[Focus Blocker] Connected to background script');
+    
+    this.reportBlurState(false);
+  }
+  
+  reportBlurState(isBlurred) {
+    chrome.runtime.sendMessage({ 
+      action: 'reportBlurState', 
+      isBlurred: isBlurred 
+    });
+  }
+  
+  getRandomBlurIntensity() {
+    return Math.random() * (this.blurMax - this.blurMin) + this.blurMin + 'px';
+  }
+  
+  animateBlur() {
+    if (this.currentBlurLevel === this.targetBlurLevel) {
+      this.stopAnimation();
+      return;
+    }
+    
+    const diff = this.targetBlurLevel - this.currentBlurLevel;
+    this.currentBlurLevel += diff * 0.1; // 10% per frame for smooth transition
+    
+    this.applyBlurToPage(this.currentBlurLevel + 'px');
+    
+    this.blurAnimationId = requestAnimationFrame(() => this.animateBlur());
+  }
+  
+  stopAnimation() {
+    if (this.blurAnimationId) {
+      cancelAnimationFrame(this.blurAnimationId);
+      this.blurAnimationId = null;
+    }
+  }
+  
+  applyBlurToPage(intensity) {
+    document.body.style.filter = `blur(${intensity})`;
+    document.body.style.webkitFilter = `blur(${intensity})`;
+    
+    document.querySelectorAll('iframe, video').forEach(element => {
+      element.style.filter = `blur(${intensity})`;
+      element.style.webkitFilter = `blur(${intensity})`;
+    });
+  }
+  
+  applyBlur() {
+    const now = Date.now();
+    
+    if (now - this.lastBlurCheck < this.blurCheckInterval) {
+      return;
+    }
+    this.lastBlurCheck = now;
+    
+    if (Math.random() > this.blurChance) {
+      console.log('[Focus Blocker] Random skip - no blur this time');
+      return;
+    }
+    
+    const newTargetBlur = parseFloat(this.getRandomBlurIntensity());
+    if (this.targetBlurLevel !== newTargetBlur || !this.blurAnimationId) {
+      this.targetBlurLevel = newTargetBlur;
+      
+      if (!this.blurAnimationId) {
+        this.blurAnimationId = requestAnimationFrame(() => this.animateBlur());
+      }
+      
+      this.blurApplied = true;
+      console.log(`[Focus Blocker] Blur animating to ${this.targetBlurLevel}px`);
+      
+      this.reportBlurState(true);
+    }
+  }
+  
+  removeBlur() {
+    if (!this.blurApplied) return;
+    
+    this.targetBlurLevel = 0;
+    
+    if (!this.blurAnimationId) {
+      this.blurAnimationId = requestAnimationFrame(() => this.animateBlur());
+    }
+    
+    setTimeout(() => {
+      if (this.targetBlurLevel === 0 && Math.abs(this.currentBlurLevel) < 0.1) {
+        this.blurApplied = false;
+        console.log('[Focus Blocker] Blur fully removed');
+        this.reportBlurState(false);
+      }
+    }, 300);
     
     console.log('[Focus Blocker] Blur fading out');
   }
-}
-
-// HEARTBEAT: Check at configured interval
-function startHeartbeat() {
-  if (heartbeatInterval) clearInterval(heartbeatInterval);
   
-  const interval = config?.contentCheckIntervalMs || 500;
-  heartbeatInterval = setInterval(() => {
-    // Ask background for current time status
+  startContentHeartbeat() {
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      this.startHeartbeat();
+    } else {
+      window.addEventListener('DOMContentLoaded', () => this.startHeartbeat());
+    }
+    
+    this.performInitialCheck();
+  }
+  
+  startHeartbeat() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    
+    const interval = this.config?.contentCheckIntervalMs || 500;
+    this.heartbeatInterval = setInterval(() => this.heartbeatCheck(), interval);
+    
+    console.log(`[Focus Blocker] Content heartbeat started (${interval}ms)`);
+  }
+  
+  heartbeatCheck() {
     chrome.runtime.sendMessage({ action: 'getTimeStatus' }, (response) => {
       if (chrome.runtime.lastError) return;
       
-      if (response && response.shouldBeBlurred && !blurApplied) {
-        console.log(`[Focus Blocker] Heartbeat - Should be blurred (total: ${Math.floor(response.totalTime/1000)}s), applying`);
-        applyBlurForce();
-      } else if (response && !response.shouldBeBlurred && blurApplied) {
-        console.log(`[Focus Blocker] Heartbeat - Should NOT be blurred (total: ${Math.floor(response.totalTime/1000)}s), removing`);
-        removeBlur();
+      // Store site key for debugging
+      if (response?.siteKey && response.siteKey !== this.currentSiteKey) {
+        this.currentSiteKey = response.siteKey;
+        console.log(`[Focus Blocker] Now on site: ${this.currentSiteKey}`);
       }
-      // Note: No log for already blurred state to reduce spam
+      
+      // Check if water break is active
+      chrome.runtime.sendMessage({ action: 'getPopupData' }, (popupData) => {
+        if (popupData?.waterBreakActive) {
+          if (this.blurApplied) {
+            console.log(`[Focus Blocker] Water break active, removing blur from ${this.currentSiteKey}`);
+            this.removeBlur();
+          }
+          return;
+        }
+        
+        if (response?.shouldBeBlurred && !this.blurApplied) {
+          console.log(`[Focus Blocker] ${this.currentSiteKey} - Should be blurred (total: ${Math.floor(response.totalTime/1000)}s), applying`);
+          this.applyBlur();
+        } else if (response && !response.shouldBeBlurred && this.blurApplied) {
+          console.log(`[Focus Blocker] ${this.currentSiteKey} - Should NOT be blurred (total: ${Math.floor(response.totalTime/1000)}s), removing`);
+          this.removeBlur();
+        }
+        
+        this.verifyBlurState();
+      });
+    });
+  }
+  
+  verifyBlurState() {
+    if (this.blurApplied && document.body.style.filter !== `blur(${this.blurIntensity})`) {
+      console.log('[Focus Blocker] Heartbeat - Blur was removed, reapplying');
+      this.applyBlur();
+    }
+  }
+  
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      console.log('[Focus Blocker] Content heartbeat stopped');
+    }
+  }
+  
+  performInitialCheck() {
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ action: 'getTimeStatus' }, (response) => {
+        if (response?.shouldBeBlurred) {
+          if (response.blurIntensity) {
+            this.blurIntensity = response.blurIntensity;
+          }
+          console.log(`[Focus Blocker] Initial check - Should be blurred (total: ${Math.floor(response.totalTime/1000)}s)`);
+          this.applyBlur();
+        }
+      });
+    }, 1000);
+  }
+  
+  setupEventListeners() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => this.handleRuntimeMessage(message, sender, sendResponse));
+    
+    if (this.port) {
+      this.port.onMessage.addListener((message) => this.handlePortMessage(message));
+      this.port.onDisconnect.addListener(() => this.handlePortDisconnect());
+    }
+    
+    window.addEventListener('beforeunload', () => this.stopHeartbeat());
+  }
+  
+  handleRuntimeMessage(message, sender, sendResponse) {
+    console.log(`[Focus Blocker] Received message: ${message.action}`);
+    
+    switch (message.action) {
+      case 'applyBlur':
+        if (message.blurIntensity) {
+          this.blurIntensity = message.blurIntensity;
+        }
+        this.applyBlur();
+        break;
+      case 'removeBlur':
+        this.removeBlur();
+        break;
+    }
+    
+    sendResponse({ received: true });
+    return true;
+  }
+  
+  handlePortMessage(message) {
+    console.log(`[Focus Blocker] Received port message: ${message.action}`);
+    
+    switch (message.action) {
+      case 'applyBlur':
+        if (message.blurIntensity) {
+          this.blurIntensity = message.blurIntensity;
+        }
+        this.applyBlur();
+        break;
+      case 'removeBlur':
+        this.removeBlur();
+        break;
+    }
+  }
+  
+  handlePortDisconnect() {
+    console.log('[Focus Blocker] Disconnected from background');
+    this.stopHeartbeat();
+  }
+  
+  setupMutationObserver() {
+    const observer = new MutationObserver(() => this.handleDOMChanges());
+    
+    observer.observe(document, { 
+      childList: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'id']
     });
     
-    // Also force reapply blur if it should be applied
-    if (blurApplied) {
-      // Quick check to ensure blur is still applied
-      const intensity = blurIntensity;
-      if (document.body.style.filter !== `blur(${intensity})`) {
-        console.log('[Focus Blocker] Heartbeat - Blur was removed, reapplying');
-        applyBlurForce();
-      }
-    }
-  }, interval);
-  
-  console.log(`[Focus Blocker] Content heartbeat started (${interval}ms)`);
-}
-
-function stopHeartbeat() {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-    console.log('[Focus Blocker] Content heartbeat stopped');
-  }
-}
-
-// Listen for messages
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log(`[Focus Blocker] Received message: ${message.action}`);
-  
-  if (message.action === 'applyBlur') {
-    if (message.blurIntensity) {
-      blurIntensity = message.blurIntensity;
-    }
-    applyBlurForce();
-  } else if (message.action === 'removeBlur') {
-    removeBlur();
+    console.log('[Focus Blocker] Mutation observer ready');
   }
   
-  sendResponse({ received: true });
-  return true;
-});
-
-port.onMessage.addListener((message) => {
-  console.log(`[Focus Blocker] Received port message: ${message.action}`);
-  
-  if (message.action === 'applyBlur') {
-    if (message.blurIntensity) {
-      blurIntensity = message.blurIntensity;
-    }
-    applyBlurForce();
-  } else if (message.action === 'removeBlur') {
-    removeBlur();
-  }
-});
-
-// Handle SPA navigation
-const observer = new MutationObserver((mutations) => {
-  // If we should be blurred, make sure it stays
-  if (blurApplied) {
-    // Quick reapply
+  handleDOMChanges() {
+    if (!this.blurApplied) return;
+    
     setTimeout(() => {
-      const intensity = blurIntensity;
-      if (blurApplied && document.body.style.filter !== `blur(${intensity})`) {
+      if (this.blurApplied && document.body.style.filter !== `blur(${this.blurIntensity})`) {
         console.log('[Focus Blocker] Mutation - Blur was removed, reapplying');
-        applyBlurForce();
+        this.applyBlur();
       }
     }, 10);
   }
-});
+}
 
-// Start observing
-observer.observe(document, { 
-  childList: true, 
-  subtree: true,
-  attributes: true,
-  attributeFilter: ['style', 'class', 'id']
-});
-
-console.log('[Focus Blocker] Mutation observer ready');
-
-// Initialize
-loadConfig().then(() => {
-  // Start heartbeat when page is ready
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    console.log('[Focus Blocker] Page ready, starting heartbeat');
-    startHeartbeat();
-  } else {
-    window.addEventListener('DOMContentLoaded', () => {
-      console.log('[Focus Blocker] DOM loaded, starting heartbeat');
-      startHeartbeat();
-    });
-    
-    window.addEventListener('load', () => {
-      console.log('[Focus Blocker] Page fully loaded');
-    });
-  }
-  
-  // Check immediately on load
-  setTimeout(() => {
-    chrome.runtime.sendMessage({ action: 'getTimeStatus' }, (response) => {
-      if (response && response.shouldBeBlurred) {
-        if (response.blurIntensity) {
-          blurIntensity = response.blurIntensity;
-        }
-        console.log(`[Focus Blocker] Initial check - Should be blurred (total: ${Math.floor(response.totalTime/1000)}s)`);
-        applyBlurForce();
-      }
-    });
-  }, 1000);
-});
-
-// Clean up
-port.onDisconnect.addListener(() => {
-  console.log('[Focus Blocker] Disconnected from background');
-  stopHeartbeat();
-});
-
-// Also clean up on page unload
-window.addEventListener('beforeunload', () => {
-  stopHeartbeat();
-});
+// Initialize the content script
+new FocusBlockerContent();

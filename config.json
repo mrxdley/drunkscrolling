@@ -16,8 +16,8 @@
   "checkIntervalMs": 1000,
   "contentCheckIntervalMs": 500,
   "enableDebugLogging": true,
-  "blurChance": 0.9,
+  "blurChance": 0.5,
   "blurMin": 4,
-  "blurMax": 10,
+  "blurMax": 34,
   "blurCheckInterval": 1100
 }

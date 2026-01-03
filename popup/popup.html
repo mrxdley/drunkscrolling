@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drunkscrolling</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f0f1b; /* Deep dark blue/black */
+      color: #e0e0e0;
+      margin: 0;
+      overflow: hidden;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 5px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 1px;
+      color: #ff3366; /* Neon pink/red */
+      text-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+      font-style: italic;
+    }
+    
+    .header .subtitle {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    
+    .status-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #aaa;
+      margin-bottom: 5px;
+      text-align: center;
+    }
+    
+    .timer-display {
+      font-size: 32px;
+      font-weight: 800;
+      color: #00f2ff; /* Neon Cyan */
+      text-align: center;
+      margin: 5px 0 15px 0;
+      font-family: 'Courier New', monospace;
+      text-shadow: 0 0 15px rgba(0, 242, 255, 0.4);
+    }
+    
+    .water-button {
+      background: linear-gradient(135deg, #ff3366 0%, #ba2649 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(255, 51, 102, 0.3);
+    }
+    
+    .water-button:hover {
+      filter: brightness(1.2);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255, 51, 102, 0.4);
+    }
+    
+    .water-button:active {
+      transform: translateY(1px);
+    }
+    
+    .water-button:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    
+    .info-text {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      margin-top: 10px;
+      font-style: italic;
+    }
+    
+    .stats {
+      font-size: 12px;
+      color: #999;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    
+    .stats-value {
+      font-weight: bold;
+      color: #00f2ff;
+    }
+    
+    .error {
+      color: #ff3366;
+      font-size: 11px;
+      text-align: center;
+      margin-top: 10px;
+      display: none;
+      padding: 5px;
+      border: 1px solid #ff3366;
+      border-radius: 4px;
+    }
+
+    /* Subtle "drunk" animation for the title */
+    @keyframes sway {
+      0% { transform: rotate(-1deg); }
+      100% { transform: rotate(1deg); }
+    }
+    .header h1 {
+      display: inline-block;
+      animation: sway 3s ease-in-out infinite alternate;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🥴 Drunkscrolling</h1>
+      <div class="subtitle">Sobriety is a choice</div>
+    </div>
+    
+    <div class="status-card">
+      <div class="status-title">Time until intoxication:</div>
+      <div class="timer-display" id="timeUntilBlur">--:--</div>
+      
+      <button class="water-button" id="waterButton">
+        💧 Water Break
+      </button>
+      
+      <div class="info-text">
+        Click to sober up for 5 seconds
+      </div>
+      
+      <div class="stats">
+        <div class="stats-row">
+          <span class="stats-label">Time wasted today:</span>
+          <span class="stats-value" id="totalTimeToday">0m 0s</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-label">Drunkness:</span>
+          <span class="stats-value" id="currentStatus">Tipsy</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="error" id="errorMessage">
+      System crash. Lay down and refresh.
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
