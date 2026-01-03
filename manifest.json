@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Blocker",
+  "version": "1.0",
+  "description": "Blurs distracting sites after time limits",
+  "permissions": ["tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "run_at": "document_end"
+  }],
+  "web_accessible_resources": [{
+    "resources": ["config.json"],
+    "matches": ["<all_urls>"]
+  }]
+}

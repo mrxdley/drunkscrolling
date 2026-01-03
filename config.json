@@ -1,0 +1,23 @@
+{
+  "blurrableSites": [
+    "youtube.com",
+    "youtu.be",
+    "netflix.com",
+    "twitter.com",
+    "x.com",
+    "facebook.com",
+    "instagram.com",
+    "tiktok.com",
+    "reddit.com",
+    "twitch.tv"
+  ],
+  "timeoutSeconds": 5,
+  "blurIntensity": "5px",
+  "checkIntervalMs": 1000,
+  "contentCheckIntervalMs": 500,
+  "enableDebugLogging": true,
+  "blurChance": 0.9,
+  "blurMin": 4,
+  "blurMax": 10,
+  "blurCheckInterval": 1100
+}
